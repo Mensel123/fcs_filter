@@ -1,7 +1,7 @@
 from datetime import datetime as dt
 
 from utils import add_class, remove_class
-
+from pyscript import Element
 tasks = []
 
 # define the task template that will be use to render new templates to the page
