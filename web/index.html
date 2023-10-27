@@ -1,8 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+<!doctype html>
 <head>
+    <!-- Recommended meta tags -->
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!-- PyScript CSS -->
+    <link rel="stylesheet" href="https://pyscript.net/snapshots/2023.09.1.RC2/core.css">
+    <!-- This script tag bootstraps PyScript -->
+    <script type="module" src="https://pyscript.net/snapshots/2023.09.1.RC2/core.js"></script>
+</head>
+<body>
     <py-config>
         plugins = [
           "https://pyscript.net/latest/plugins/python/py_tutor.py",
@@ -13,8 +21,5 @@
     </py-config>
 
     <py-script src="./todo.py"></py-script>
-</head>
-<body>
-
 </body>
 </html>
