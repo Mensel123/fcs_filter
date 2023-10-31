@@ -1,6 +1,9 @@
+import re
 from tkinter import filedialog
 
-import flowkit as fk
+import numpy as np
+from flowio import create_fcs
+import flowio
 import glob, os
 from pathlib import Path
 import tkinter as tk
@@ -8,37 +11,64 @@ import time
 
 
 def filter_file(path, channels, new_path):
-    sample = fk.Sample(path, ignore_offset_error=True)
-    metadata = sample.get_metadata()
-    print(metadata)
+    with open(path, 'rb') as fcs_file:
+        flow_data = flowio.FlowData(fcs_file)
+        data_array = np.reshape(flow_data.events, (-1, flow_data.channel_count))
+    metadata = flow_data.text
 
-    # Filter
-    df = sample.as_dataframe(source='raw')
-    df_filtered = df[channels]
+    # get indices of requested channels
+    flattened_channels_dict = {key: value['PnN'] for (key, value) in flow_data.channels.items()}
+    channels_idx = [key for (key, value) in flattened_channels_dict.items() if value in channels]
+    new_channels_idx = list(range(1, len(channels_idx) + 1))  # start from 1
 
-    # Save as new file
-    sample_filtered = fk.Sample(df_filtered, sample_id='filtered_data')
-    sample_filtered.metadata = metadata
-    sample_filtered.export(new_path, source='raw', include_metadata=True)
+    # filter data
+    filtered_data_array = data_array[:, np.array(channels_idx).astype(int) - 1] # 1 to 0 index
 
-    del sample
+    # change metadata
+    idx_dict = {key: value for key, value in zip(channels_idx, new_channels_idx)}
+    channel_info = {key: metadata[key] for key in metadata if bool(re.match(r"p\d.", key))}
 
+    # Construct the regex pattern based on the digits to filter
+    pattern = '|'.join(map(lambda x: f'(?<!\\d){x}(?!\\d)', channels_idx))
+    pattern = f'({pattern})'
+
+    filtered_channel_info = {key: metadata[key] for key in channel_info if bool(re.search(pattern, key))}
+    filtered_and_renamed_channel_info = filtered_channel_info.copy()
+
+    for key, value in filtered_channel_info.items():
+        old_idx = re.findall(r'\d+', key)[0]
+        new_idx = idx_dict[old_idx]
+        new_idx = key.replace(str(old_idx), str(new_idx))
+        filtered_and_renamed_channel_info[new_idx] = filtered_channel_info[key]
+        if str(key) != str(new_idx):
+            print(key, new_idx)
+            del filtered_and_renamed_channel_info[key]
+
+    new_meta = metadata.copy()
+    [new_meta.pop(key) for key in channel_info.keys()]
+    [new_meta.pop(key) for key in ['begindata', 'enddata']]
+
+    new_meta.update(filtered_and_renamed_channel_info)
+
+    # order channels according to metadata
+    ordered_channels = [value for key, value in filtered_and_renamed_channel_info.items() if bool(re.match(r"p\dn", key))]
+
+    fh = open(new_path, 'wb')
+    create_fcs(fh, filtered_data_array.flatten(), ordered_channels, metadata_dict=new_meta)
+    fh.close()
 
 def main():
-    # path = '/Users/mendelengelaer/Documents/AMC/promotie.nosync/scripts/fsc_file_filter/test_data'
-    # new_path = '/Users/mendelengelaer/Documents/AMC/promotie.nosync/scripts/fsc_file_filter/filtered_test_data'
-
     channels_to_keep = [
         'FSC-A',
         'SSC-A',
         'SSC-B-A',
+        'FSC-H',
+        'SSC-H',
+        'SSC-B-H',
+        'B2-H',
         'B2-A',
-        'B4-A',
-        'R1-A',
-        'R2-A',
-        'V3-A',
-        'V5-A',
-        'Time'
+        'Time',
+        'Width'
     ]
 
     window = tk.Tk()
@@ -102,8 +132,6 @@ def main():
     status.set('Idle')
     status_label = tk.Label(window, textvariable=status, bg='orange', fg='red')
     status_label.pack()
-
-    # folder_selected = filedialog.askdirectory()
 
     window.mainloop()
 
