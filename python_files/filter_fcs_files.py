@@ -11,12 +11,13 @@ import time
 
 
 def filter_file(path, channels, new_path):
+    # Load fcs file as FlowData
     with open(path, 'rb') as fcs_file:
         flow_data = flowio.FlowData(fcs_file)
         data_array = np.reshape(flow_data.events, (-1, flow_data.channel_count))
     metadata = flow_data.text
 
-    # get indices of requested channels
+    # Get indices of requested channels
     flattened_channels_dict = {key: value['PnN'] for (key, value) in flow_data.channels.items()}
     channels_idx = [key for (key, value) in flattened_channels_dict.items() if value in channels]
     new_channels_idx = list(range(1, len(channels_idx) + 1))  # start from 1
@@ -24,31 +25,7 @@ def filter_file(path, channels, new_path):
     # filter data
     filtered_data_array = data_array[:, np.array(channels_idx).astype(int) - 1] # 1 to 0 index
 
-    # change metadata
-    idx_dict = {key: value for key, value in zip(channels_idx, new_channels_idx)}
-    channel_info = {key: metadata[key] for key in metadata if bool(re.match(r"p\d.", key))}
-
-    # Construct the regex pattern based on the digits to filter
-    pattern = '|'.join(map(lambda x: f'(?<!\\d){x}(?!\\d)', channels_idx))
-    pattern = f'({pattern})'
-
-    filtered_channel_info = {key: metadata[key] for key in channel_info if bool(re.search(pattern, key))}
-    filtered_and_renamed_channel_info = filtered_channel_info.copy()
-
-    for key, value in filtered_channel_info.items():
-        old_idx = re.findall(r'\d+', key)[0]
-        new_idx = idx_dict[old_idx]
-        new_idx = key.replace(str(old_idx), str(new_idx))
-        filtered_and_renamed_channel_info[new_idx] = filtered_channel_info[key]
-        if str(key) != str(new_idx):
-            print(key, new_idx)
-            del filtered_and_renamed_channel_info[key]
-
-    new_meta = metadata.copy()
-    [new_meta.pop(key) for key in channel_info.keys()]
-    [new_meta.pop(key) for key in ['begindata', 'enddata']]
-
-    new_meta.update(filtered_and_renamed_channel_info)
+    filtered_and_renamed_channel_info, new_meta = create_new_metadata(channels_idx, metadata, new_channels_idx)
 
     # order channels according to metadata
     ordered_channels = [value for key, value in filtered_and_renamed_channel_info.items() if bool(re.match(r"p\dn", key))]
@@ -56,6 +33,35 @@ def filter_file(path, channels, new_path):
     fh = open(new_path, 'wb')
     create_fcs(fh, filtered_data_array.flatten(), ordered_channels, metadata_dict=new_meta)
     fh.close()
+
+
+def create_new_metadata(channels_idx, metadata, new_channels_idx):
+    # Get channel id from metadata
+    idx_dict = {key: value for key, value in zip(channels_idx, new_channels_idx)}
+    channel_info = {key: metadata[key] for key in metadata if bool(re.match(r"p\d.", key))}
+
+    # Construct the regex pattern based on the digits to filter
+    pattern = '|'.join(map(lambda x: f'(?<!\\d){x}(?!\\d)', channels_idx))
+    pattern = f'({pattern})'
+
+    # Filter out requested channels
+    filtered_channel_info = {key: metadata[key] for key in channel_info if bool(re.search(pattern, key))}
+    filtered_and_renamed_channel_info = filtered_channel_info.copy()
+
+    # Loop through filtered metadata and start indexing at 1
+    for key, value in filtered_channel_info.items():
+        old_idx = re.findall(r'\d+', key)[0]
+        new_idx = idx_dict[old_idx]
+        new_idx = key.replace(str(old_idx), str(new_idx))
+        filtered_and_renamed_channel_info[new_idx] = filtered_channel_info[key]
+        if str(key) != str(new_idx):
+            del filtered_and_renamed_channel_info[key]
+    new_meta = metadata.copy()
+    [new_meta.pop(key) for key in channel_info.keys()]
+    [new_meta.pop(key) for key in ['begindata', 'enddata']]
+    new_meta.update(filtered_and_renamed_channel_info)
+    return filtered_and_renamed_channel_info, new_meta
+
 
 def main():
     channels_to_keep = [
