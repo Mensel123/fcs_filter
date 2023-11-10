@@ -70,11 +70,10 @@ def main():
         'SSC-B-A',
         'FSC-H',
         'SSC-H',
+        'SSC-W',
         'SSC-B-H',
         'B2-H',
-        'B2-A',
-        'Time',
-        'Width'
+        'Time'
     ]
 
     window = tk.Tk()
